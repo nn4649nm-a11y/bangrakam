@@ -1,0 +1,145 @@
+html, body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+#map {
+  width: 100%;
+  height: 100%;
+}
+
+/* ป้ายชื่อตำบลที่แสดงกลางพื้นที่ */
+.zone-label {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  color: #1e293b;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  white-space: nowrap;
+}
+
+/* ไอคอนหมุดตัวเลขระดับน้ำ สไตล์ Flood BKK */
+.bkk-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+  border: 2px solid white;
+}
+
+.bkk-critical {
+  background-color: #dc2626;
+  animation: markerPulse 1.8s infinite;
+}
+
+.bkk-warning {
+  background-color: #d97706;
+}
+
+.bkk-normal {
+  background-color: #ffffff;
+  color: #15803d;
+  border: 2px solid #16a34a;
+}
+
+@keyframes markerPulse {
+  0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
+
+/* Popup */
+.leaflet-popup-content-wrapper {
+  border-radius: 12px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15) !important;
+}
+
+.leaflet-popup-content {
+  margin: 10px 12px !important;
+}
+
+/* กล่องปุ่มควบคุมชิดมุมขวาบนของ Leaflet */
+.leaflet-custom-controls {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  border: 1px solid #cbd5e1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin-top: 10px !important;
+  margin-right: 10px !important;
+}
+
+.leaflet-custom-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  color: #334155;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.15s ease;
+}
+
+.leaflet-custom-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.leaflet-custom-btn:active {
+  background: #e2e8f0;
+}
+
+.leaflet-custom-divider {
+  height: 1px;
+  background: #e2e8f0;
+  width: 100%;
+}
+
+/* คำสั่งขยายเฉพาะแผนที่ให้เต็มหน้าจอ (Fullscreen) */
+#mapContainer:fullscreen {
+  width: 100vw !important;
+  height: 100vh !important;
+  background: #000;
+  border-radius: 0 !important;
+  border: none !important;
+}
+
+#mapContainer:fullscreen #map {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* สไตล์ Scrollbar ใน Sidebar */
+#sidebarListContainer::-webkit-scrollbar {
+  width: 5px;
+}
+#sidebarListContainer::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+/* รายงานที่รอแอดมินตรวจสอบ (เห็นเฉพาะแอดมิน) */
+.bkk-pending {
+  background-color: #cbd5e1;
+  color: #475569;
+  border: 2px dashed #64748b;
+}
+
+
+/* อายุของรายงาน: เริ่มเก่า (6–24 ชม.) และเก่า (เกิน 24 ชม.) */
+.bkk-aging { opacity: 0.75; }
+.bkk-stale { opacity: 0.45; filter: grayscale(0.7); animation: none !important; }

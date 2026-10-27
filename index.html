@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>สรุปน้ำท่วมขังถนน อำเภอบางระกำ</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-[#f0f2f5] text-slate-800 min-h-screen md:h-screen flex flex-col md:overflow-hidden font-sans">
+
+  <!-- แถบนำทางด้านบน -->
+  <nav class="bg-white border-b border-slate-200 px-4 py-2 shrink-0 z-30">
+    <div class="max-w-[1700px] mx-auto flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <div class="bg-blue-600 text-white p-1.5 rounded-lg flex items-center justify-center">
+          <i class="ph-bold ph-map-trifold text-lg"></i>
+        </div>
+        <span class="font-bold text-xs sm:text-sm text-slate-800">แผนที่สถานการณ์น้ำท่วมขังถนน อ.บางระกำ</span>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <div class="hidden sm:flex items-center bg-blue-50 border border-blue-200 text-blue-700 rounded-lg px-3 py-1 text-xs font-semibold gap-1.5">
+          <i class="ph-fill ph-waves"></i>
+          <span>น้ำท่วมขังถนน (บางระกำโมเดล)</span>
+          <span class="w-2 h-2 rounded-full bg-blue-600 ml-1"></span>
+        </div>
+        
+        <button id="openReportModalBtn" class="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-medium text-xs px-3.5 py-1.5 rounded-lg shadow-sm transition-all active:scale-95">
+          <i class="ph-bold ph-plus-circle text-base"></i>
+          <span>แจ้งเหตุน้ำท่วม</span>
+        </button>
+
+        <button id="openHistoryBtn" type="button" class="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-sky-700 border border-sky-300 font-medium text-xs px-3 py-1.5 rounded-lg shadow-sm transition-all">
+          <i class="ph-bold ph-clock-counter-clockwise text-base"></i>
+          <span>ย้อนหลัง</span>
+        </button>
+
+        <button id="adminLoginBtn" type="button" class="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-medium text-xs px-3 py-1.5 rounded-lg shadow-sm transition-all">
+          <i class="ph-bold ph-lock-key text-base"></i>
+          <span>แอดมิน</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ข้อความเตือนสถานะข้อมูล + ปุ่มเบอร์ฉุกเฉิน -->
+  <div class="bg-amber-50 border-b border-amber-200 px-4 py-1.5 shrink-0 z-20">
+    <div class="max-w-[1700px] mx-auto flex items-center justify-between gap-2">
+      <p class="text-[11px] text-amber-900 leading-snug min-w-0">
+        <i class="ph-bold ph-warning-circle"></i>
+        <span class="font-semibold">ข้อมูลเพื่อประกอบการตัดสินใจ ไม่ใช่ประกาศทางการ</span>
+        <span class="hidden sm:inline"> · อาจไม่ครบถ้วนหรือไม่เป็นปัจจุบัน โปรดติดตามประกาศจากหน่วยงานในพื้นที่</span>
+      </p>
+      <button id="openContactBtn" type="button" class="shrink-0 flex items-center gap-1 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[11px] px-2.5 py-1 rounded-md shadow-sm">
+        <i class="ph-bold ph-phone-call"></i><span>เบอร์ฉุกเฉิน</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Dashboard สรุปด้านบนแบบ Flood BKK -->
+  <section class="bg-white border-b border-slate-200 px-4 py-3 shrink-0 shadow-[0_2px_4px_rgba(0,0,0,0.02)] z-20">
+    <div class="max-w-[1700px] mx-auto space-y-2.5">
+      <div class="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+        <div class="flex items-center gap-2 text-sm font-bold text-slate-800">
+          <i class="ph-bold ph-chart-bar text-blue-600"></i>
+          <span>สรุปน้ำท่วมขังถนน</span>
+          <span id="statMini" class="md:hidden text-[11px] font-normal text-slate-500"></span>
+        </div>
+        <button id="dashToggle" type="button" class="md:hidden flex items-center gap-1 text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded-md">
+          <i class="ph-bold ph-caret-down" id="dashToggleIcon"></i><span id="dashToggleText">แสดงรายละเอียด</span>
+        </button>
+        <div class="hidden sm:block text-[11px] text-slate-400">
+          ข้อมูลอัปเดต: <span class="text-slate-600 font-medium">Realtime จาก Supabase</span> · พื้นที่ อ.บางระกำ จ.พิษณุโลก
+        </div>
+      </div>
+
+      <div id="dashGrid" class="hidden md:grid grid-cols-1 md:grid-cols-12 gap-3 items-stretch">
+        <!-- ยอดรวมจุดน้ำท่วม -->
+        <div class="md:col-span-3 bg-slate-50 border border-slate-200/80 rounded-xl p-3 flex items-center gap-4">
+          <div class="text-center px-2">
+            <div id="statTotalFlood" class="text-4xl font-black text-slate-900 tracking-tight leading-none">0</div>
+            <div class="text-[11px] font-bold text-slate-600 mt-1">จุดน้ำท่วมขังถนน</div>
+          </div>
+          <div class="text-[11px] text-slate-500 space-y-0.5 border-l border-slate-200 pl-3">
+            <div>ครอบคลุม: <b id="statSubdistrictsCount" class="text-slate-800">0</b> ตำบล</div>
+            <div>จุดตรวจวัดทั้งหมด: <b id="statTotalPoints" class="text-slate-800">0</b> จุด</div>
+            <div class="text-emerald-600 font-medium">สัญจรได้ปกติ: <span id="statNormalPoints">0</span> จุด</div>
+            <div id="statStaleRow" class="hidden text-slate-400">ไม่นับข้อมูลเก่า &gt; 24 ชม.: <span id="statStale">0</span> จุด</div>
+          </div>
+        </div>
+
+        <!-- แยกตามระดับความรุนแรง -->
+        <div class="md:col-span-4 bg-slate-50/50 border border-slate-200/80 rounded-xl p-3 flex flex-col justify-between">
+          <div class="text-[11px] font-bold text-slate-700 flex justify-between">
+            <span>แยกตามระดับความรุนแรง</span>
+            <span class="text-[10px] text-slate-400">เกณฑ์ความสูงน้ำ</span>
+          </div>
+          <div class="space-y-1.5 text-xs">
+            <div class="flex items-center justify-between">
+              <span class="flex items-center gap-1.5 text-[11px] text-slate-600">
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-600"></span> หนัก (≥ 25 ซม. / ปิดการจราจร)
+              </span>
+              <span id="statCritical" class="font-bold text-rose-600">0 จุด</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="flex items-center gap-1.5 text-[11px] text-slate-600">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> ปานกลาง (10-24 ซม. / ชะลอตัว)
+              </span>
+              <span id="statWarning" class="font-bold text-amber-600">0 จุด</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="flex items-center gap-1.5 text-[11px] text-slate-600">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> ปกติ (0-9 ซม. / สัญจรได้)
+              </span>
+              <span id="statMinor" class="font-bold text-emerald-600">0 จุด</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- การ์ดสถานะ (แอดมินกรอกเอง เก็บในตาราง site_status) -->
+        <div class="md:col-span-5 grid grid-cols-2 gap-2">
+          <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 flex flex-col justify-between">
+            <div class="text-[11px] font-bold text-slate-700 flex items-center justify-between gap-1">
+              <span class="flex items-center gap-1"><i class="ph-bold ph-shield-check text-blue-600"></i><span>บางระกำโมเดล</span></span>
+              <button type="button" data-edit-status="bangrakam_model" class="hidden text-[10px] font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded">แก้ไข</button>
+            </div>
+            <div class="text-xs text-slate-600 mt-1">กักเก็บน้ำในทุ่ง: <b id="modelLabel" class="text-slate-400">ยังไม่มีข้อมูล</b></div>
+            <div id="modelDetail" class="text-[10px] text-slate-500 mt-0.5"></div>
+            <div id="modelUpdated" class="text-[10px] text-slate-400"></div>
+          </div>
+          <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 flex flex-col justify-between">
+            <div class="text-[11px] font-bold text-slate-700 flex items-center justify-between gap-1">
+              <span class="flex items-center gap-1"><i class="ph-bold ph-gauge text-cyan-600"></i><span>สถานีวัดน้ำแม่น้ำยม Y.16</span></span>
+              <button type="button" data-edit-status="y16" class="hidden text-[10px] font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded">แก้ไข</button>
+            </div>
+            <div class="text-xs text-slate-600 mt-1">ระดับเทียบตลิ่ง: <b id="y16Label" class="text-slate-400">ยังไม่มีข้อมูล</b></div>
+            <div id="y16Detail" class="text-[10px] text-slate-500 mt-0.5"></div>
+            <div id="y16Updated" class="text-[10px] text-slate-400"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ส่วนแผนที่ (ซ้าย) + แถบรายการ (ขวา) -->
+  <main class="flex-1 flex flex-col md:flex-row md:overflow-hidden max-w-[1700px] w-full mx-auto p-3 gap-3">
+    
+    <!-- กล่องคลุมแผนที่รองรับ Fullscreen -->
+    <div id="mapContainer" class="flex-none md:flex-1 flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden relative h-[65vh] md:h-full">
+      
+      <!-- เมนูด้านบนแผนที่ (เพิ่มปุ่มเปิด-ปิดแสดงขอบเขตพื้นที่ตำบลข้างๆ เมนูดรอปดาวน์) -->
+      <div class="p-2 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-2 z-10">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-bold text-slate-700 flex items-center gap-1">
+            <i class="ph-bold ph-map-pin"></i> แผนที่น้ำท่วมขัง
+          </span>
+
+          <!-- Dropdown เลือกตำบล -->
+          <select id="subdistrictFilter" class="bg-slate-50 border border-slate-200 rounded-md px-2 py-1 text-xs text-slate-700 focus:outline-none focus:border-blue-500">
+            <option value="all">ทุกตำบล (11 ตำบล)</option>
+            <option value="คุยม่วง">ตำบลคุยม่วง</option>
+            <option value="ชุมแสงสงคราม">ตำบลชุมแสงสงคราม</option>
+            <option value="ท่านางงาม">ตำบลท่านางงาม</option>
+            <option value="นิคมพัฒนา">ตำบลนิคมพัฒนา</option>
+            <option value="บางระกำ">ตำบลบางระกำ</option>
+            <option value="บึงกอก">ตำบลบึงกอก</option>
+            <option value="บ่อทอง">ตำบลบ่อทอง</option>
+            <option value="ปลักแรด">ตำบลปลักแรด</option>
+            <option value="พันเสา">ตำบลพันเสา</option>
+            <option value="วังอิทก">ตำบลวังอิทก</option>
+            <option value="หนองกุลา">ตำบลหนองกุลา</option>
+          </select>
+
+          <!-- ปุ่มเปิด-ปิดแสดงขอบเขตพื้นที่ตำบล (ข้างๆ ปุ่มตำบล) -->
+          <button id="toggleZonesBtn" type="button" class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-all shadow-sm">
+            <i class="ph-bold ph-polygon text-blue-600"></i>
+            <span id="toggleZonesText">แสดงพื้นที่ตำบล</span>
+          </button>
+        </div>
+
+        <div class="relative w-full sm:w-64">
+          <i class="ph ph-magnifying-glass absolute left-2.5 top-2 text-slate-400 text-xs"></i>
+          <input type="text" id="mapSearchInput" placeholder="ค้นหาถนน / ตำบล..." class="w-full bg-slate-50 border border-slate-200 rounded-md pl-7 pr-2.5 py-1 text-xs text-slate-700 focus:outline-none focus:border-blue-500">
+        </div>
+      </div>
+
+      <!-- แผนที่จริง -->
+      <div class="flex-1 relative w-full h-full min-h-[300px]">
+        <div id="map" class="w-full h-full z-0"></div>
+
+        <!-- แถบสรุปเหตุการณ์ย้อนหลังที่เลือก -->
+        <div id="historyBanner" class="hidden absolute bottom-8 left-3 right-3 sm:left-auto sm:max-w-sm z-[600] bg-white rounded-xl border border-sky-300 shadow-lg p-3"></div>
+
+        <!-- คำอธิบายสัญลักษณ์มุมซ้ายล่าง -->
+        <div class="hidden sm:block absolute bottom-4 left-3 z-[500] bg-white/95 backdrop-blur-sm p-2.5 rounded-lg border border-slate-200 shadow-md text-[11px] max-w-[210px]">
+          <div class="font-bold text-slate-700 border-b border-slate-100 pb-1 mb-1.5 flex items-center justify-between">
+            <span>สัญลักษณ์</span>
+            <i class="ph-bold ph-info text-slate-400"></i>
+          </div>
+          <div class="space-y-1">
+            <div class="flex items-center gap-1.5">
+              <span class="w-4 h-4 rounded-full bg-rose-600 text-white font-bold flex items-center justify-center text-[8px]">หนัก</span>
+              <span class="text-slate-600">≥ 25 ซม. (ห้ามสัญจร)</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-4 h-4 rounded-full bg-amber-500 text-white font-bold flex items-center justify-center text-[8px]">กลาง</span>
+              <span class="text-slate-600">10-24 ซม. (ชะลอตัว)</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-4 h-4 rounded-full border border-emerald-600 bg-white text-emerald-700 font-bold flex items-center justify-center text-[8px]">0</span>
+              <span class="text-slate-600">ไม่มีน้ำบนถนน</span>
+            </div>
+            <div class="flex items-center gap-1.5 pt-1 border-t border-slate-100">
+              <span class="w-3.5 h-3.5 rounded bg-sky-400/40 border border-sky-600"></span>
+              <span class="text-sky-700 font-medium">บริเวณน้ำท่วมขัง (สีฟ้า)</span>
+            </div>
+          </div>
+          <div class="mt-1.5 pt-1 border-t border-slate-100 text-[9px] text-slate-400">
+            * คลิกขวาบนแผนที่เพื่อแจ้งเหตุ
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- แถบรายการฝั่งขวา -->
+    <aside class="w-full md:w-80 lg:w-96 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden shrink-0 h-[55vh] md:h-full">
+      <div class="p-2 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
+        <div class="flex gap-1">
+          <button id="tabSubdistrict" class="sidebar-tab px-3 py-1 rounded-md text-xs font-semibold bg-blue-600 text-white">รายตำบล</button>
+          <button id="tabRoads" class="sidebar-tab px-3 py-1 rounded-md text-xs font-semibold bg-slate-200 text-slate-600 hover:bg-slate-300">รายถนน</button>
+        </div>
+        <span id="sidebarTotalBadge" class="text-[11px] font-bold text-slate-500">0 จุด</span>
+      </div>
+
+      <div id="sidebarListContainer" class="flex-1 overflow-y-auto divide-y divide-slate-100 p-1">
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- Modal แจ้งเหตุน้ำท่วม -->
+  <div id="reportModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-5 shadow-2xl relative border border-slate-100">
+      <button id="closeReportModalBtn" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
+        <i class="ph-bold ph-x text-lg"></i>
+      </button>
+
+      <h3 class="text-base font-bold text-slate-800 mb-1 flex items-center gap-1.5">
+        <i class="ph-bold ph-warning-octagon text-rose-500"></i> แจ้งจุดน้ำท่วม อ.บางระกำ
+      </h3>
+      <p class="text-xs text-slate-500 mb-3.5">รายงานจะแสดงบนแผนที่หลังเจ้าหน้าที่ตรวจสอบแล้ว</p>
+
+      <form id="floodReportForm" class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">ชื่อถนน / บริเวณจุดเกิดเหตุ *</label>
+          <input type="text" id="reportTitle" required placeholder="เช่น ถนนเลี่ยงเมืองบางระกำ, หน้าตลาด" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">ตำบล *</label>
+            <select id="reportSubdistrict" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500">
+              <option value="คุยม่วง">ตำบลคุยม่วง</option>
+              <option value="ชุมแสงสงคราม">ตำบลชุมแสงสงคราม</option>
+              <option value="ท่านางงาม">ตำบลท่านางงาม</option>
+              <option value="นิคมพัฒนา">ตำบลนิคมพัฒนา</option>
+              <option value="บางระกำ">ตำบลบางระกำ</option>
+              <option value="บึงกอก">ตำบลบึงกอก</option>
+              <option value="บ่อทอง">ตำบลบ่อทอง</option>
+              <option value="ปลักแรด">ตำบลปลักแรด</option>
+              <option value="พันเสา">ตำบลพันเสา</option>
+              <option value="วังอิทก">ตำบลวังอิทก</option>
+              <option value="หนองกุลา">ตำบลหนองกุลา</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">ความสูงน้ำ (ซม.)</label>
+            <input type="number" id="reportDepth" value="20" min="0" max="300" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-blue-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">ระดับสถานการณ์ <span class="font-normal text-slate-400">(ตั้งอัตโนมัติจากความสูงน้ำ)</span></label>
+          <div class="grid grid-cols-3 gap-2 pointer-events-none select-none">
+            <label class="cursor-pointer">
+              <input type="radio" name="reportStatus" value="critical" class="peer sr-only">
+              <div class="p-1.5 border border-slate-200 rounded-lg text-center peer-checked:border-rose-500 peer-checked:bg-rose-50 text-xs">
+                <span class="text-rose-600 font-bold block text-[11px]">หนัก</span>
+                <span class="text-[9px] text-slate-400">≥ 25 ซม.</span>
+              </div>
+            </label>
+            <label class="cursor-pointer">
+              <input type="radio" name="reportStatus" value="warning" checked class="peer sr-only">
+              <div class="p-1.5 border border-slate-200 rounded-lg text-center peer-checked:border-amber-500 peer-checked:bg-amber-50 text-xs">
+                <span class="text-amber-600 font-bold block text-[11px]">ปานกลาง</span>
+                <span class="text-[9px] text-slate-400">10-24 ซม.</span>
+              </div>
+            </label>
+            <label class="cursor-pointer">
+              <input type="radio" name="reportStatus" value="normal" class="peer sr-only">
+              <div class="p-1.5 border border-slate-200 rounded-lg text-center peer-checked:border-emerald-500 peer-checked:bg-emerald-50 text-xs">
+                <span class="text-emerald-600 font-bold block text-[11px]">ปกติ</span>
+                <span class="text-[9px] text-slate-400">ไม่มีน้ำ</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">สภาพจราจร / คำแนะนำ</label>
+          <input type="text" id="reportFlow" placeholder="เช่น รถเล็กชะลอตัว เลี่ยงได้ควรเลี่ยง" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-0.5">Latitude</label>
+            <input type="text" id="reportLat" readonly class="w-full bg-slate-100 border border-slate-200 rounded px-2 py-1 text-[10px] font-mono text-slate-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-0.5">Longitude</label>
+            <input type="text" id="reportLng" readonly class="w-full bg-slate-100 border border-slate-200 rounded px-2 py-1 text-[10px] font-mono text-slate-500">
+          </div>
+        </div>
+
+        <button type="submit" id="submitBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg text-xs shadow-md transition-all">
+          บันทึกและส่งรายงาน
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal เข้าสู่ระบบแอดมิน -->
+  <div id="loginModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2100] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full max-h-[90vh] overflow-y-auto p-5 shadow-2xl relative border border-slate-100">
+      <button id="closeLoginBtn" type="button" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
+        <i class="ph-bold ph-x text-lg"></i>
+      </button>
+      <h3 class="text-base font-bold text-slate-800 mb-3 flex items-center gap-1.5">
+        <i class="ph-bold ph-lock-key text-blue-600"></i> เข้าสู่ระบบแอดมิน
+      </h3>
+      <form id="loginForm" class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">อีเมล</label>
+          <input type="email" id="loginEmail" required autocomplete="username" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">รหัสผ่าน</label>
+          <input type="password" id="loginPassword" required autocomplete="current-password" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500">
+        </div>
+        <div id="loginMsg" class="text-xs text-rose-600 min-h-[1rem]"></div>
+        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg text-xs shadow-md transition-all">เข้าสู่ระบบ</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal แก้ไขการ์ดสถานะ (แอดมิน) -->
+  <div id="statusModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2200] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full max-h-[90vh] overflow-y-auto p-5 shadow-2xl relative border border-slate-100">
+      <button id="closeStatusBtn" type="button" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><i class="ph-bold ph-x text-lg"></i></button>
+      <h3 id="statusModalTitle" class="text-base font-bold text-slate-800 mb-3">แก้ไขสถานะ</h3>
+      <form id="statusForm" class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">สถานะ *</label>
+          <input type="text" id="statusLabel" list="statusLabelOptions" maxlength="60" required class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500">
+          <datalist id="statusLabelOptions"></datalist>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">ระดับ (กำหนดสีที่แสดง)</label>
+          <select id="statusLevel" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500">
+            <option value="ok">ปกติ (เขียว)</option>
+            <option value="watch">เฝ้าระวัง (เหลือง)</option>
+            <option value="alert">วิกฤต (แดง)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">รายละเอียดเพิ่มเติม (ไม่บังคับ)</label>
+          <input type="text" id="statusDetail" maxlength="120" placeholder="เช่น ระดับน้ำ 8.2 ม. ต่ำกว่าตลิ่ง 1.1 ม." class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500">
+        </div>
+        <div id="statusMsg" class="text-xs text-rose-600 min-h-[1rem]"></div>
+        <div class="flex gap-2">
+          <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg text-xs shadow-md">บันทึก</button>
+          <button type="button" id="clearStatusBtn" class="px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium py-2 rounded-lg text-xs">ล้างข้อมูล</button>
+        </div>
+        <p class="text-[10px] text-slate-400">ข้อมูลที่อัปเดตเกิน 24 ชั่วโมงจะแสดงบนหน้าเว็บว่า "ยังไม่มีข้อมูล"</p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal เบอร์ฉุกเฉินและเกี่ยวกับข้อมูล -->
+  <div id="contactModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2300] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-5 shadow-2xl relative border border-slate-100">
+      <button id="closeContactBtn" type="button" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><i class="ph-bold ph-x text-lg"></i></button>
+      <h3 class="text-base font-bold text-slate-800 mb-2 flex items-center gap-1.5"><i class="ph-bold ph-phone-call text-rose-600"></i> เบอร์โทรฉุกเฉิน</h3>
+      <div class="mb-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs p-2.5 font-medium">
+        หากมีผู้เจ็บป่วยหรือชีวิตตกอยู่ในอันตราย โทร <a href="tel:1669" class="underline font-bold">1669</a> (แพทย์ฉุกเฉิน) หรือ <a href="tel:191" class="underline font-bold">191</a> ทันที — อย่ารอข้อมูลจากแผนที่นี้
+      </div>
+      <div id="localContacts" class="hidden mb-3"></div>
+      <div id="nationalContacts" class="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden"></div>
+
+      <h4 class="text-xs font-bold text-slate-700 mt-4 mb-1">เกี่ยวกับข้อมูลในแผนที่นี้</h4>
+      <ul class="text-[11px] text-slate-600 space-y-1 list-disc pl-4">
+        <li>จุดน้ำท่วมมาจากรายงานของประชาชนและเจ้าหน้าที่ แสดงบนแผนที่หลังผ่านการตรวจสอบ ระดับน้ำเป็นค่าโดยประมาณ ณ เวลาที่รายงาน</li>
+        <li>ระดับสถานการณ์: ปกติ 0–9 ซม. · ปานกลาง 10–24 ซม. · หนัก ตั้งแต่ 25 ซม. ขึ้นไป</li>
+        <li>จุดที่ไม่มีรายงานไม่ได้แปลว่าไม่มีน้ำท่วม สภาพจริงอาจเปลี่ยนเร็วกว่าที่แผนที่อัปเดต</li>
+        <li>ขอบเขตตำบลใช้เพื่อแสดงผลเท่านั้น ไม่ใช่แนวเขตตามกฎหมาย (ข้อมูลจาก OpenGISData-Thailand)</li>
+        <li>แผนที่: © OpenStreetMap contributors, Esri</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Modal เหตุการณ์น้ำท่วมย้อนหลัง -->
+  <div id="historyModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2400] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-5 shadow-2xl relative border border-slate-100">
+      <button id="closeHistoryBtn" type="button" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><i class="ph-bold ph-x text-lg"></i></button>
+      <h3 class="text-base font-bold text-slate-800 mb-1 flex items-center gap-1.5"><i class="ph-bold ph-clock-counter-clockwise text-sky-600"></i> เหตุการณ์น้ำท่วมย้อนหลัง อ.บางระกำ</h3>
+      <p class="text-[11px] text-slate-500 mb-3">เลือกช่วงเวลาแล้วกดเหตุการณ์เพื่อดูพื้นที่บนแผนที่ ข้อมูลมาจากข่าวและรายงานหน่วยงาน ไม่มีพิกัดรายจุด และยังไม่พบรายงานเฉพาะบางระกำของปี 2564</p>
+      <div id="historyYears" class="flex flex-wrap gap-1.5 mb-3"></div>
+      <div id="historyList" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <script src="boundaries.js"></script>
+  <script src="app.js"></script>
+  <script src="history.js"></script>
+</body>
+</html>
