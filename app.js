@@ -681,26 +681,206 @@ function syncStatusFromDepth() {
 }
 reportDepthInput.addEventListener("input", syncStatusFromDepth);
 
-let selectedLat = 16.758;
-let selectedLng = 100.117;
+// ---- ตำแหน่งจุดแจ้งเหตุ ----
+// null = ผู้แจ้งยังไม่ได้เลือกตำแหน่ง (ไม่ใช้พิกัดกลางอำเภอเป็นค่าเริ่มต้นอีก เพื่อไม่ให้ส่งหมุดผิดที่โดยไม่รู้ตัว)
+let selectedLat = null;
+let selectedLng = null;
+let draftMarker = null;
+let pickMode = false;
+let pickBackup = null;
 
-function openModal(lat = selectedLat, lng = selectedLng) {
+// ช่วงพิกัดต้องตรงกับเงื่อนไข lat/lng ใน policy reports_insert_validated ของ Supabase (lat 16.50–16.95, lng 99.85–100.25)
+const REPORT_BOUNDS = { latMin: 16.50, latMax: 16.95, lngMin: 99.85, lngMax: 100.25 };
+const GPS_WARN_ACCURACY_M = 50;
+
+function inReportBounds(lat, lng) {
+  return lat >= REPORT_BOUNDS.latMin && lat <= REPORT_BOUNDS.latMax &&
+         lng >= REPORT_BOUNDS.lngMin && lng <= REPORT_BOUNDS.lngMax;
+}
+
+const LOCATION_MSG_COLOR = { ok: "text-emerald-700", warn: "text-amber-700", err: "text-rose-600", info: "text-slate-500" };
+function setLocationMsg(text, kind = "info") {
+  const el = document.getElementById("locationMsg");
+  el.textContent = text; // textContent: ไม่ตีความเป็น HTML
+  el.className = "text-[11px] mt-1.5 min-h-[1rem] " + (LOCATION_MSG_COLOR[kind] || LOCATION_MSG_COLOR.info);
+}
+
+function draftIcon() {
+  return L.divIcon({
+    className: "draft-pin",
+    html: '<i class="ph-fill ph-map-pin" style="font-size:36px;color:#e11d48;filter:drop-shadow(0 2px 2px rgba(0,0,0,.45))"></i>',
+    iconSize: [36, 36],
+    iconAnchor: [18, 34]
+  });
+}
+
+function updatePickCoords() {
+  const confirmBtn = document.getElementById("pickConfirmBtn");
+  const coords = document.getElementById("pickCoords");
+  if (!draftMarker) {
+    coords.textContent = "ยังไม่ได้วางหมุด";
+    confirmBtn.disabled = true;
+    return;
+  }
+  const p = draftMarker.getLatLng();
+  coords.textContent = `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
+  confirmBtn.disabled = false;
+}
+
+function setDraftMarker(lat, lng) {
+  if (!draftMarker) {
+    draftMarker = L.marker([lat, lng], { icon: draftIcon(), draggable: true, zIndexOffset: 1000 }).addTo(map);
+    draftMarker.on("drag", updatePickCoords);
+    draftMarker.on("dragend", updatePickCoords);
+  } else {
+    draftMarker.setLatLng([lat, lng]);
+  }
+  updatePickCoords();
+}
+
+function removeDraftMarker() {
+  if (draftMarker) { map.removeLayer(draftMarker); draftMarker = null; }
+  updatePickCoords();
+}
+
+function setLocation(lat, lng, sourceText, kind = "ok") {
+  if (!inReportBounds(lat, lng)) {
+    setLocationMsg("ตำแหน่งนี้อยู่นอกพื้นที่ อ.บางระกำ กรุณาเลือกใหม่", "err");
+    return false;
+  }
   selectedLat = lat;
   selectedLng = lng;
   document.getElementById("reportLat").value = lat.toFixed(5);
   document.getElementById("reportLng").value = lng.toFixed(5);
   const zoneName = findSubdistrict(lat, lng);
   if (zoneName) document.getElementById("reportSubdistrict").value = zoneName;
+  setDraftMarker(lat, lng);
+  setLocationMsg(sourceText, kind);
+  return true;
+}
+
+function clearLocation() {
+  selectedLat = null;
+  selectedLng = null;
+  document.getElementById("reportLat").value = "";
+  document.getElementById("reportLng").value = "";
+  removeDraftMarker();
+  setLocationMsg("ยังไม่ได้เลือกตำแหน่ง — กดปุ่มด้านบนก่อนส่งรายงาน", "warn");
+}
+
+function openModal(lat, lng) {
+  if (typeof lat === "number" && typeof lng === "number") {
+    setLocation(lat, lng, "ตำแหน่งจากจุดที่กดบนแผนที่ (ลากหมุดปรับได้ที่ปุ่ม \"เลือกบนแผนที่\")");
+  } else if (selectedLat === null) {
+    setLocationMsg("ยังไม่ได้เลือกตำแหน่ง — กดปุ่มด้านบนก่อนส่งรายงาน", "warn");
+  }
   syncStatusFromDepth();
   modal.classList.remove("hidden");
 }
 
+function closeReportModal() {
+  modal.classList.add("hidden");
+  clearLocation(); // ปิดฟอร์มแล้วไม่ทิ้งหมุดค้างบนแผนที่
+}
+
 openBtn.addEventListener("click", () => openModal());
-closeBtn.addEventListener("click", () => modal.classList.add("hidden"));
-map.on("contextmenu", (e) => openModal(e.latlng.lat, e.latlng.lng));
+closeBtn.addEventListener("click", closeReportModal);
+map.on("contextmenu", (e) => { if (!pickMode) openModal(e.latlng.lat, e.latlng.lng); });
+
+// ปุ่ม GPS: ได้ตำแหน่งของ "ผู้แจ้ง" (ต้องเปิดผ่าน HTTPS) — ถ้าจุดน้ำท่วมอยู่ห่างจากผู้แจ้ง ให้ใช้เลือกบนแผนที่แทน
+const useGpsBtn = document.getElementById("useGpsBtn");
+useGpsBtn.addEventListener("click", () => {
+  if (!navigator.geolocation || !window.isSecureContext) {
+    setLocationMsg("เบราว์เซอร์นี้ใช้ GPS ไม่ได้ (ต้องเปิดผ่าน HTTPS) — ใช้ปุ่ม \"เลือกบนแผนที่\" แทน", "err");
+    return;
+  }
+  useGpsBtn.disabled = true;
+  setLocationMsg("กำลังหาตำแหน่ง...", "info");
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      useGpsBtn.disabled = false;
+      const { latitude, longitude, accuracy } = pos.coords;
+      if (!inReportBounds(latitude, longitude)) {
+        setLocationMsg("ตำแหน่งของคุณอยู่นอกพื้นที่ อ.บางระกำ — ใช้ปุ่ม \"เลือกบนแผนที่\" แทน", "err");
+        return;
+      }
+      const acc = Math.round(accuracy);
+      const base = `ตำแหน่ง GPS ของคุณ (คลาดเคลื่อนประมาณ ${acc} ม.) ถ้าจุดน้ำท่วมอยู่ห่างจากคุณ ให้กด "เลือกบนแผนที่"`;
+      if (accuracy > GPS_WARN_ACCURACY_M) {
+        setLocation(latitude, longitude, `สัญญาณ GPS ยังไม่แม่น (คลาดเคลื่อนประมาณ ${acc} ม.) แนะนำให้กด "เลือกบนแผนที่" เพื่อปรับหมุด`, "warn");
+      } else {
+        setLocation(latitude, longitude, base, "ok");
+      }
+    },
+    (err) => {
+      useGpsBtn.disabled = false;
+      const msg = err.code === 1 ? "ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง — อนุญาตในเบราว์เซอร์ หรือใช้ \"เลือกบนแผนที่\""
+        : err.code === 3 ? "หาตำแหน่งไม่ทันเวลา ลองใหม่อีกครั้งในที่โล่ง หรือใช้ \"เลือกบนแผนที่\""
+        : "หาตำแหน่งไม่ได้ — ใช้ \"เลือกบนแผนที่\" แทน";
+      setLocationMsg(msg, "err");
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
+});
+
+// เลือกบนแผนที่: ซ่อนฟอร์มชั่วคราว แตะแผนที่เพื่อวางหมุด ลากปรับได้ แล้วกดยืนยัน
+const pickBanner = document.getElementById("pickBanner");
+function startPick() {
+  pickMode = true;
+  pickBackup = selectedLat === null ? null : [selectedLat, selectedLng];
+  modal.classList.add("hidden");
+  pickBanner.classList.remove("hidden");
+  map.getContainer().style.cursor = "crosshair";
+  map.getContainer().classList.add("picking"); // ดู style.css: ให้การแตะทะลุพื้นที่ตำบล/วงน้ำ/จุดเดิม
+  map.closePopup();
+  if (draftMarker) {
+    map.flyTo(draftMarker.getLatLng(), Math.max(map.getZoom(), 16), { duration: 0.6 });
+  }
+  updatePickCoords();
+  focusMapOnMobile();
+}
+function endPick() {
+  pickMode = false;
+  pickBanner.classList.add("hidden");
+  map.getContainer().style.cursor = "";
+  map.getContainer().classList.remove("picking");
+}
+document.getElementById("pickOnMapBtn").addEventListener("click", startPick);
+
+map.on("click", (e) => {
+  if (!pickMode) return;
+  if (!inReportBounds(e.latlng.lat, e.latlng.lng)) {
+    document.getElementById("pickCoords").textContent = "จุดนี้อยู่นอกพื้นที่ อ.บางระกำ — แตะใหม่ในพื้นที่";
+    return;
+  }
+  setDraftMarker(e.latlng.lat, e.latlng.lng);
+});
+
+document.getElementById("pickConfirmBtn").addEventListener("click", () => {
+  if (!draftMarker) return;
+  const p = draftMarker.getLatLng();
+  if (setLocation(p.lat, p.lng, "ตำแหน่งที่เลือกบนแผนที่ (ตรวจว่าหมุดตรงถนนที่น้ำท่วมก่อนส่ง)")) {
+    endPick();
+    modal.classList.remove("hidden");
+  } else {
+    document.getElementById("pickCoords").textContent = "จุดนี้อยู่นอกพื้นที่ อ.บางระกำ — เลือกใหม่";
+  }
+});
+
+document.getElementById("pickCancelBtn").addEventListener("click", () => {
+  endPick();
+  if (pickBackup) setDraftMarker(pickBackup[0], pickBackup[1]); // กลับไปตำแหน่งเดิมที่เลือกไว้ก่อนหน้า
+  else removeDraftMarker();
+  modal.classList.remove("hidden");
+});
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  // ต้องเลือกตำแหน่งก่อนส่งเสมอ (กันหมุดตกกลางอำเภอโดยไม่ตั้งใจ)
+  if (selectedLat === null || selectedLng === null || !inReportBounds(selectedLat, selectedLng)) {
+    setLocationMsg("กรุณาเลือกตำแหน่งจุดน้ำท่วมก่อนส่งรายงาน (ใช้ GPS หรือเลือกบนแผนที่)", "err");
+    return;
+  }
   const submitBtn = document.getElementById("submitBtn");
   submitBtn.disabled = true;
   submitBtn.innerText = "กำลังบันทึก...";
@@ -725,6 +905,7 @@ form.addEventListener("submit", async (e) => {
   } else {
     modal.classList.add("hidden");
     form.reset();
+    clearLocation();
     syncStatusFromDepth();
     fetchReports();
     if (!isAdmin) alert("ส่งรายงานเรียบร้อย ขอบคุณครับ\nเจ้าหน้าที่จะตรวจสอบก่อนแสดงบนแผนที่");

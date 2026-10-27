@@ -143,3 +143,8 @@ html, body {
 /* อายุของรายงาน: เริ่มเก่า (6–24 ชม.) และเก่า (เกิน 24 ชม.) */
 .bkk-aging { opacity: 0.75; }
 .bkk-stale { opacity: 0.45; filter: grayscale(0.7); animation: none !important; }
+
+/* โหมดเลือกตำแหน่งแจ้งเหตุ: ให้การแตะทะลุพื้นที่ตำบล/วงน้ำ/จุดเดิมไปถึงแผนที่ (เหลือแค่หมุดที่กำลังวางที่ลากได้) */
+.picking path.leaflet-interactive { pointer-events: none !important; }
+.picking .leaflet-marker-icon:not(.draft-pin) { pointer-events: none !important; }
+.picking .leaflet-marker-icon.draft-pin { cursor: grab; }
